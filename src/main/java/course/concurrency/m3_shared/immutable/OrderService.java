@@ -1,46 +1,38 @@
 package course.concurrency.m3_shared.immutable;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class OrderService {
 
-    private Map<Long, Order> currentOrders = new HashMap<>();
-    private long nextId = 0L;
-
-    private synchronized long nextId() {
-        return nextId++;
-    }
-
+    private final Map<Long, Order> currentOrders = new ConcurrentHashMap<>();
     public synchronized long createOrder(List<Item> items) {
-        long id = nextId();
         Order order = new Order(items);
-        order.setId(id);
-        currentOrders.put(id, order);
-        return id;
+        currentOrders.put(order.getId(), order);
+        return order.getId();
     }
 
     public synchronized void updatePaymentInfo(long orderId, PaymentInfo paymentInfo) {
-        currentOrders.get(orderId).setPaymentInfo(paymentInfo);
-        if (currentOrders.get(orderId).checkStatus()) {
-            deliver(currentOrders.get(orderId));
+        Order paid = currentOrders.computeIfPresent(orderId, (key, o) -> o.withInfo(paymentInfo));
+        if (paid != null && paid.checkStatus()) {
+            deliver(paid);
         }
     }
 
-    public synchronized void setPacked(long orderId) {
-        currentOrders.get(orderId).setPacked(true);
-        if (currentOrders.get(orderId).checkStatus()) {
-            deliver(currentOrders.get(orderId));
+    public void setPacked(long orderId) {
+        Order packed = currentOrders.computeIfPresent(orderId, (key, o) -> o.packed());
+        if (packed != null && packed.checkStatus()) {
+            deliver(packed);
         }
     }
 
-    private synchronized void deliver(Order order) {
+    private void deliver(Order order) {
         /* ... */
-        currentOrders.get(order.getId()).setStatus(Order.Status.DELIVERED);
+        currentOrders.computeIfPresent(order.getId(), (key, o) -> o.withStatus(Order.Status.DELIVERED));
     }
 
-    public synchronized boolean isDelivered(long orderId) {
+    public boolean isDelivered(long orderId) {
         return currentOrders.get(orderId).getStatus().equals(Order.Status.DELIVERED);
     }
 }
